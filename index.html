@@ -7,212 +7,316 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f111a">
-<style>
-  body{background-color:#0f111a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;margin:0}
-  .scrollbar-hide::-webkit-scrollbar{display:none}
-  html,body{height:100%;overflow:hidden;width:100%}
-  #root{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch}
-  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#6366f1;font-weight:bold;flex-direction:column;gap:10px}
-  #debug-log{display:none;padding:15px;background:rgba(50,0,0,0.9);color:#ffaaaa;font-family:monospace;position:fixed;top:0;left:0;right:0;z-index:9999;white-space:pre-wrap;font-size:11px;max-height:150px;overflow:auto;pointer-events:none;}
-</style>
-<!-- Libraries with crossorigin to unmask errors -->
+
+<!-- 1. デザインと機能の基盤 -->
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js" crossorigin="anonymous"></script>
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+
+<!-- 2. Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+    body { background-color: #0f111a; color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+    #root { height: 100%; overflow-y: scroll; -webkit-overflow-scrolling: touch; }
+    .hide-scroll::-webkit-scrollbar { display: none; }
+    .loader { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: #0f111a; z-index: 9999; transition: opacity 0.5s; pointer-events: none; }
+    .spinner { width: 40px; height: 40px; border: 3px solid rgba(99, 102, 241, 0.3); border-top-color: #6366f1; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #err-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); color: #ff6b6b; padding: 20px; z-index: 10000; font-family: monospace; white-space: pre-wrap; overflow: auto; }
+</style>
 </head>
 <body>
-<div id="debug-log"></div>
-<div id="root"><div class="loading"><span>Loading App...</span></div></div>
+
+<div id="err-overlay"></div>
+<div id="root">
+    <div class="loader" id="app-loader">
+        <div class="spinner"></div>
+        <div style="font-weight: 600; letter-spacing: 0.05em; color: #6366f1;">MoodStock.</div>
+    </div>
+</div>
+
 <script>
-  // Debug Logger
-  function log(msg) {
-    var d = document.getElementById('debug-log');
-    d.style.display = 'block';
-    d.innerHTML = "> " + msg + "\n" + d.innerHTML;
-  }
-  window.onerror = function(m, u, l) { log("Error: " + m + " (L:" + l + ")"); return false; };
+    window.onerror = function(msg, url, line) {
+        if (msg && msg.indexOf('Script error') === -1) {
+            document.getElementById('err-overlay').style.display = 'block';
+            document.getElementById('err-overlay').innerText = "【Error】\n" + msg + "\nLine: " + line;
+        }
+        return false;
+    };
 </script>
+
 <script type="text/babel">
-  // Config
-  const firebaseConfig = {
-    apiKey: "AIzaSyDzSl1mR-AurB3dNyFLYSo3pkM4jg6sf1A",
-    authDomain: "stock-stocks.firebaseapp.com",
-    projectId: "stock-stocks",
-    storageBucket: "stock-stocks.firebasestorage.app",
-    messagingSenderId: "918894170952",
-    appId: "1:918894170952:web:81e04503642e412a94197d"
-  };
+    const firebaseConfig = {
+        apiKey: "AIzaSyDzSl1mR-AurB3dNyFLYSo3pkM4jg6sf1A",
+        authDomain: "stock-stocks.firebaseapp.com",
+        projectId: "stock-stocks",
+        storageBucket: "stock-stocks.firebasestorage.app",
+        messagingSenderId: "918894170952",
+        appId: "1:918894170952:web:81e04503642e412a94197d"
+    };
 
-  // Wait for Libs
-  const waitForLibs = (cb, n=0) => {
-    if(window.React && window.ReactDOM && window.firebase && window.Motion) cb();
-    else if(n<50) setTimeout(()=>waitForLibs(cb,n+1), 100);
-    else log("Libs timeout. Reload page.");
-  };
+    const startApp = () => {
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
 
-  waitForLibs(() => {
-    try {
-      if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-      const auth = firebase.auth();
-      const db = firebase.firestore();
-      
-      const { useState, useEffect, useMemo, useRef } = React;
-      const { motion, Reorder, AnimatePresence, useDragControls } = window.Motion;
+        const { useState, useEffect, useRef, useMemo } = React;
+        const { motion, Reorder, AnimatePresence, useDragControls } = window.Motion;
 
-      // Icons
-      const Icon=({d,className,onClick,onPointerDown})=><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} onClick={onClick} onPointerDown={onPointerDown} style={onClick||onPointerDown?{cursor:'pointer'}:{}}><path d={d}/></svg>;
-      const Ps={
-        Plus:"M5 12h14M12 5v14",Shuffle:"M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5",
-        Trash:"M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6",
-        Link:"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3",
-        Grip:"M9 12h.01M15 12h.01M9 5h.01M15 5h.01M9 19h.01M15 19h.01",
-        X:"M18 6 6 18M6 6l12 12",Up:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
-        Move:"M5 9l-3 3 3 3M9 5l3-3 3 3M19 9l3 3-3 3M15 19l-3 3-3-3M2 12h20M12 2v20",
-        Cloud:"M17.5 19c0-1.7-1.3-3-3-3h-1.1c-.1-2.6-2.2-4.7-4.8-4.7-2.3 0-4.3 1.7-4.7 4H3c-1.7 0-3 1.3-3 3s1.3 3 3 3h14.5c1.4 0 2.5-1.1 2.5-2.5z",
-        Ref:"M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-      };
-
-      const fmtDt=(t)=>new Intl.DateTimeFormat('ja-JP',{month:'short',day:'numeric'}).format(new Date(t));
-      
-      // Robust Image Processor with Logging
-      const procImg=(f)=>new Promise((res, rej)=>{
-        if(!f) return rej("File empty");
-        const r=new FileReader();
-        r.onerror=()=>{ log("FileReader error"); rej("Read failed"); };
-        r.onload=(e)=>{
-          const i=new Image();
-          i.onerror=()=>{ log("Image load error"); rej("Img failed"); };
-          i.src=e.target.result;
-          i.onload=()=>{
-            try {
-              // Reduced size to 600px for safety
-              const c=document.createElement('canvas'),x=c.getContext('2d'),m=600;
-              let w=i.width,h=i.height;
-              if(w>h&&w>m){h*=m/w;w=m}else if(h>w&&h>m){w*=m/h;h=m}
-              c.width=w;c.height=h;
-              x.drawImage(i,0,0,w,h);
-              res(c.toDataURL('image/jpeg',0.8));
-            } catch(err) { log("Canvas error: "+err.message); rej(err); }
-          }
+        const compressImage = (file) => {
+            return new Promise((resolve, reject) => {
+                if (!file) return reject("ファイルがありません");
+                if (file.size > 5 * 1024 * 1024) return reject("画像サイズが大きすぎます(5MB以下)");
+                const reader = new FileReader();
+                reader.onerror = () => reject("読み込みエラー");
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onerror = () => reject("画像データ破損");
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            const maxDim = 600; 
+                            let w = img.width;
+                            let h = img.height;
+                            if (w > h && w > maxDim) { h *= maxDim/w; w = maxDim; }
+                            else if (h > w && h > maxDim) { w *= maxDim/h; h = maxDim; }
+                            canvas.width = w; canvas.height = h;
+                            ctx.drawImage(img, 0, 0, w, h);
+                            resolve(canvas.toDataURL('image/jpeg', 0.75));
+                        } catch (err) { reject("メモリ不足エラー"); }
+                    };
+                };
+                reader.readAsDataURL(file);
+            });
         };
-        r.readAsDataURL(f);
-      });
 
-      const Card=({children,onClick,className})=><div onClick={onClick} className={`backdrop-blur-xl bg-slate-800/40 border border-white/5 shadow-lg rounded-2xl ${className||''}`}>{children}</div>;
-      const Badge=({cat})=>{
-        const c={want:'bg-pink-500/20 text-pink-300 border-pink-500/20',inspo:'bg-cyan-500/20 text-cyan-300 border-cyan-500/20',memo:'bg-emerald-500/20 text-emerald-300 border-emerald-500/20'};
-        return <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border ${c[cat]}`}>{cat}</span>;
-      };
-
-      const Modal=({isOpen,onClose,onSave,edit})=>{
-        const [d,setD]=useState({title:'',url:'',cat:'want',img:'',pos:{x:50,y:50}});
-        const [upl,setUpl]=useState(false);const [sav,setSav]=useState(false);const [drg,setDrg]=useState(false);
-        const fR=useRef(null);const iR=useRef(null);
-        useEffect(()=>{if(isOpen){if(edit)setD({title:edit.title,url:edit.url,cat:edit.category,img:edit.imageUrl,pos:edit.imagePosition||{x:50,y:50}});else setD({title:'',url:'',cat:'want',img:'',pos:{x:50,y:50}});setSav(false)}},[isOpen,edit]);
-        
-        const hFile=async(e)=>{
-          if(e.target.files[0]){
-            setUpl(true);
-            try {
-              const r=await procImg(e.target.files[0]);
-              setD(p=>({...p,img:r,pos:{x:50,y:50}}));
-            } catch(err) {
-              alert("画像の読み込みに失敗しました。容量オーバーの可能性があります。");
-            } finally { setUpl(false); }
-          }
+        const Icon = ({ p, className }) => (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d={p} /></svg>
+        );
+        const Paths = {
+            Plus: "M5 12h14M12 5v14",
+            Trash: "M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6",
+            Link: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3",
+            Grip: "M9 12h.01M15 12h.01M9 5h.01M15 5h.01M9 19h.01M15 19h.01",
+            X: "M18 6 6 18M6 6l12 12",
+            Img: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
+            Cloud: "M17.5 19c0-1.7-1.3-3-3-3h-1.1c-.1-2.6-2.2-4.7-4.8-4.7-2.3 0-4.3 1.7-4.7 4H3c-1.7 0-3 1.3-3 3s1.3 3 3 3h14.5c1.4 0 2.5-1.1 2.5-2.5z",
+            Ref: "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
+            Shuffle: "M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"
         };
-        
-        const hDrag=(e)=>{if(!iR.current)return;const r=iR.current.getBoundingClientRect(),cx=e.touches?e.touches[0].clientX:e.clientX,cy=e.touches?e.touches[0].clientY:e.clientY;setD(p=>({...p,pos:{x:Math.max(0,Math.min(100,((cx-r.left)/r.width)*100)),y:Math.max(0,Math.min(100,((cy-r.top)/r.height)*100))}}))};
-        const sub=async()=>{if(!d.title)return;setSav(true);const i=d.img||`https://source.unsplash.com/800x800/?${encodeURIComponent(d.title)},minimal`;await onSave({...d,imageUrl:i,imagePosition:d.pos,category:d.cat},edit?.id);onClose()};
-        
-        return (
-          <AnimatePresence>
-          {isOpen&&(
-            <>
-              <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={onClose} className="fixed inset-0 bg-black/70 z-40"/>
-              <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:25}} className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none max-h-[95vh]">
-                <div className="w-full max-w-md bg-slate-900 border-t border-slate-700/50 shadow-2xl pointer-events-auto rounded-t-2xl flex flex-col max-h-full p-4 md:p-6 overflow-y-auto">
-                  <div className="flex justify-between mb-6"><h3 className="text-white font-medium">{edit?'Edit':'New'}</h3><button onClick={onClose} className="p-2 text-slate-400"><Icon d={Ps.X} className="w-5 h-5"/></button></div>
-                  <div className="space-y-4 pb-8">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs text-slate-400 uppercase font-bold"><span>Image</span>{d.img&&<span className="text-indigo-400 flex items-center"><Icon d={Ps.Move} className="w-3 h-3 mr-1"/> Adjust</span>}</div>
-                      <input type="file" ref={fR} onChange={hFile} accept="image/*" className="hidden"/>
-                      <div ref={iR} onClick={()=>!d.img&&fR.current.click()} onMouseDown={()=>d.img&&setDrg(true)} onMouseUp={()=>setDrg(false)} onMouseLeave={()=>setDrg(false)} onMouseMove={(e)=>drg&&hDrag(e)} onTouchStart={()=>d.img&&setDrg(true)} onTouchEnd={()=>setDrg(false)} onTouchMove={(e)=>drg&&hDrag(e)} className={`relative w-full h-48 rounded-xl border-2 border-slate-700/50 overflow-hidden ${!d.img?'border-dashed flex items-center justify-center cursor-pointer':'cursor-move'}`}>
-                        {d.img?<><img src={d.img} className="w-full h-full object-cover pointer-events-none" style={{objectPosition:`${d.pos.x}% ${d.pos.y}%`}}/><button onClick={(e)=>{e.stopPropagation();fR.current.click()}} className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1"><Icon d={Ps.Up} className="w-3 h-3"/> Change</button></>:upl?<div className="animate-spin w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full"/>:<div className="text-center text-slate-500"><Icon d={Ps.Up} className="w-8 h-8 mx-auto mb-2 opacity-50"/><span className="text-sm">Upload</span></div>}
-                      </div>
+
+        const GlassCard = ({ children, onClick, className }) => (
+            <motion.div layout onClick={onClick} whileTap={{ scale: 0.98 }} className={`backdrop-blur-xl bg-slate-800/40 border border-white/10 shadow-lg rounded-2xl overflow-hidden ${className || ''}`}>{children}</motion.div>
+        );
+
+        const StockItemCard = ({ item, onDelete, onEdit }) => {
+            const controls = useDragControls();
+            return (
+                <Reorder.Item value={item} id={item.id} dragListener={false} dragControls={controls} className="relative list-none mb-3 touch-none">
+                    <GlassCard onClick={() => onEdit(item)}>
+                        <div className="flex items-center p-3 gap-3">
+                            <div className="text-slate-600 px-1 py-2 cursor-grab active:cursor-grabbing touch-none" onPointerDown={(e) => controls.start(e)}><Icon p={Paths.Grip} className="w-6 h-6" /></div>
+                            <div className="w-20 h-20 shrink-0 bg-slate-800 rounded-xl overflow-hidden border border-white/5 relative shadow-inner">
+                                <img src={item.imageUrl} className="w-full h-full object-cover pointer-events-none" style={{objectPosition: `${item.imagePosition?.x}% ${item.imagePosition?.y}%`}} onError={(e) => e.target.style.display='none'}/>
+                            </div>
+                            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
+                                <h3 className="text-white font-bold text-base truncate leading-tight">{item.title}</h3>
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border ${item.category === 'want' ? 'bg-pink-500/20 text-pink-300 border-pink-500/20' : item.category === 'inspo' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/20' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/20'}`}>{item.category}</span>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                {item.url && <a href={item.url} target="_blank" onClick={(e) => e.stopPropagation()} className="p-2 text-indigo-400 bg-white/5 rounded-xl hover:bg-indigo-500/20 transition-colors"><Icon p={Paths.Link} className="w-4 h-4" /></a>}
+                                <button onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} className="p-2 text-slate-500 hover:text-red-400 bg-white/5 rounded-xl hover:bg-red-500/20 transition-colors"><Icon p={Paths.Trash} className="w-4 h-4" /></button>
+                            </div>
+                        </div>
+                    </GlassCard>
+                </Reorder.Item>
+            );
+        };
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [items, setItems] = useState([]);
+            const [tab, setTab] = useState('all');
+            const [status, setStatus] = useState('synced');
+            const [modalOpen, setModalOpen] = useState(false);
+            const [editItem, setEditItem] = useState(null);
+            const [title, setTitle] = useState('');
+            const [url, setUrl] = useState('');
+            const [cat, setCat] = useState('want');
+            const [img, setImg] = useState('');
+            const [pos, setPos] = useState({x: 50, y: 50});
+            const [isProcessing, setIsProcessing] = useState(false);
+            const fileRef = useRef(null);
+            const imgRef = useRef(null);
+
+            useEffect(() => { auth.onAuthStateChanged(u => { if (u) setUser(u); else auth.signInAnonymously(); }); }, []);
+            useEffect(() => {
+                if (!user) return;
+                const unsub = db.collection('users').doc(user.uid).collection('items').onSnapshot(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                    setItems(list);
+                    const loader = document.getElementById('app-loader');
+                    if(loader) loader.style.opacity = '0';
+                });
+                return () => unsub();
+            }, [user]);
+
+            const openModal = (item) => {
+                if (item) { setEditItem(item); setTitle(item.title); setUrl(item.url); setCat(item.category); setImg(item.imageUrl); setPos(item.imagePosition || {x:50,y:50}); } 
+                else { setEditItem(null); setTitle(''); setUrl(''); setCat('want'); setImg(''); setPos({x:50,y:50}); }
+                setModalOpen(true);
+            };
+
+            const handleFile = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setIsProcessing(true);
+                try { const res = await compressImage(file); setImg(res); } 
+                catch (err) { alert(err); } 
+                finally { setIsProcessing(false); if(fileRef.current) fileRef.current.value = ""; }
+            };
+
+            const handleDrag = (e) => {
+                if(!imgRef.current) return;
+                const r = imgRef.current.getBoundingClientRect();
+                const cx = e.touches ? e.touches[0].clientX : e.clientX;
+                const cy = e.touches ? e.touches[0].clientY : e.clientY;
+                const x = Math.max(0, Math.min(100, ((cx - r.left) / r.width) * 100));
+                const y = Math.max(0, Math.min(100, ((cy - r.top) / r.height) * 100));
+                setPos({x, y});
+            };
+
+            const handleSave = async () => {
+                if(!title || !user) return;
+                setStatus('saving');
+                const finalImg = img || `https://source.unsplash.com/600x600/?${cat},minimal`;
+                const data = { title, url, category: cat, imageUrl: finalImg, imagePosition: pos };
+                const ref = db.collection('users').doc(user.uid).collection('items');
+                try {
+                    if (editItem) await ref.doc(editItem.id).update(data);
+                    else await ref.add({ ...data, createdAt: Date.now(), order: items.length });
+                    setModalOpen(false);
+                } catch(e) { alert("Save Error"); }
+                setStatus('synced');
+            };
+
+            const handleDelete = async (id) => {
+                if(confirm("Delete this item?")) await db.collection('users').doc(user.uid).collection('items').doc(id).delete();
+            };
+
+            const handleReorder = (newOrder) => {
+                setItems(newOrder);
+                if(window.saveTimer) clearTimeout(window.saveTimer);
+                window.saveTimer = setTimeout(async () => {
+                    setStatus('saving');
+                    const batch = db.batch();
+                    newOrder.forEach((item, index) => {
+                        const ref = db.collection('users').doc(user.uid).collection('items').doc(item.id);
+                        batch.update(ref, { order: index });
+                    });
+                    await batch.commit();
+                    setStatus('synced');
+                }, 1500);
+            };
+
+            const handleShuffle = () => {
+                if(window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
+                const shuffled = [...items].sort(() => Math.random() - 0.5);
+                handleReorder(shuffled);
+            };
+
+            const filteredItems = useMemo(() => tab === 'all' ? items : items.filter(i => i.category === tab), [items, tab]);
+
+            return (
+                <div className="pb-32 px-4 py-6 max-w-lg mx-auto min-h-screen">
+                    <div className="sticky top-0 z-30 bg-[#0f111a]/80 backdrop-blur-md -mx-4 px-4 py-4 border-b border-white/5 mb-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">MoodStock.</h1>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-400 border border-white/10 px-2 py-1 rounded-full flex items-center gap-1 bg-slate-900/50">
+                                    <Icon p={status==='saving' ? Paths.Ref : Paths.Cloud} className={`w-3 h-3 ${status==='saving'?'animate-spin':''}`} />{status==='saving' ? 'Saving...' : 'Cloud'}
+                                </span>
+                                <motion.button whileTap={{ scale: 0.9, rotate: 180 }} onClick={handleShuffle} className="p-2 rounded-full bg-slate-800 border border-slate-700 text-slate-400">
+                                    <Icon p={Paths.Shuffle} className="w-4 h-4" />
+                                </motion.button>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto hide-scroll pb-1">
+                            {['all', 'want', 'inspo', 'memo'].map(t => (
+                                <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${tab === t ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800/50 border-transparent text-slate-400 hover:bg-slate-800'}`}>{t.toUpperCase()}</button>
+                            ))}
+                        </div>
                     </div>
-                    <div><label className="text-xs text-slate-400 uppercase font-bold">Title</label><input value={d.title} onChange={e=>setD(p=>({...p,title:e.target.value}))} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white mt-1"/></div>
-                    <div><label className="text-xs text-slate-400 uppercase font-bold">Category</label><div className="grid grid-cols-3 gap-2 mt-1">{['want','inspo','memo'].map(c=>(<button key={c} onClick={()=>setD(p=>({...p,cat:c}))} className={`py-2 rounded-xl text-sm font-medium border ${d.cat===c?'bg-indigo-600 border-indigo-500 text-white':'bg-slate-800 border-slate-700 text-slate-400'}`}>{c}</button>))}</div></div>
-                    <div><label className="text-xs text-slate-400 uppercase font-bold">Link</label><input value={d.url} onChange={e=>setD(p=>({...p,url:e.target.value}))} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white mt-1 text-sm font-mono"/></div>
-                    <button onClick={sub} disabled={!d.title||upl||sav} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg mt-2 flex items-center justify-center disabled:opacity-50">{sav?<Icon d={Ps.Ref} className="w-5 h-5 animate-spin"/>:(edit?'Save':'Add')}</button>
-                  </div>
+
+                    <div className="min-h-[60vh]">
+                        {tab === 'all' ? (
+                            <Reorder.Group axis="y" values={items} onReorder={handleReorder}>
+                                {items.map(item => <StockItemCard key={item.id} item={item} onDelete={handleDelete} onEdit={openModal} />)}
+                            </Reorder.Group>
+                        ) : (
+                            filteredItems.map(item => (
+                                <GlassCard key={item.id} onClick={() => openModal(item)} className="mb-3 cursor-pointer">
+                                    <div className="flex items-center p-3 gap-3">
+                                        <div className="w-20 h-20 shrink-0 bg-slate-800 rounded-xl overflow-hidden border border-white/5 relative"><img src={item.imageUrl} className="w-full h-full object-cover" style={{objectPosition: `${item.imagePosition?.x}% ${item.imagePosition?.y}%`}}/></div>
+                                        <div className="flex-1 min-w-0"><h3 className="text-white font-bold text-base truncate">{item.title}</h3><div className="mt-1"><span className="text-xs text-slate-400 border border-slate-700 px-2 py-0.5 rounded-lg bg-slate-800">{item.category}</span></div></div>
+                                    </div>
+                                </GlassCard>
+                            ))
+                        )}
+                        {filteredItems.length === 0 && <div className="text-center mt-20 text-slate-600 font-medium">No Items in {tab}</div>}
+                    </div>
+
+                    <motion.button whileTap={{ scale: 0.9 }} onClick={() => openModal(null)} className="fixed bottom-8 right-6 w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full flex items-center justify-center shadow-2xl border border-white/20 z-40 text-white"><Icon p={Paths.Plus} className="w-8 h-8" /></motion.button>
+
+                    <AnimatePresence>
+                        {modalOpen && (
+                            <>
+                                <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setModalOpen(false)} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50" />
+                                <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring", damping: 25, stiffness: 300}} className="fixed bottom-0 left-0 right-0 bg-[#151923] border-t border-slate-700 rounded-t-3xl z-[60] p-6 max-h-[95vh] overflow-y-auto">
+                                    <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-white flex items-center gap-2">{editItem ? 'Edit Item' : 'New Stock'}</h2><button onClick={()=>setModalOpen(false)} className="p-2 bg-slate-800 rounded-full text-slate-400"><Icon p={Paths.X} className="w-5 h-5"/></button></div>
+                                    <div className="space-y-6 pb-8">
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-xs text-slate-400 font-bold tracking-wider">VISUAL {img && <span className="text-indigo-400 animate-pulse">DRAG TO ADJUST</span>}</div>
+                                            <div ref={imgRef} className="relative w-full h-56 bg-slate-800 rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 flex items-center justify-center cursor-pointer group" onTouchMove={img ? handleDrag : undefined} onMouseMove={img && ((e) => e.buttons===1 && handleDrag(e))} onClick={() => !img && fileRef.current.click()}>
+                                                {img ? <><img src={img} className="w-full h-full object-cover pointer-events-none select-none" style={{objectPosition:`${pos.x}% ${pos.y}%`}} /><button onClick={(e)=>{e.stopPropagation();fileRef.current.click()}} className="absolute bottom-3 right-3 bg-black/70 backdrop-blur text-white text-xs font-bold px-4 py-2 rounded-full flex items-center gap-2 shadow-lg border border-white/10"><Icon p={Paths.Img} className="w-4 h-4"/> Change</button></> : <div className="text-slate-500 flex flex-col items-center gap-2 group-hover:text-indigo-400 transition-colors">{isProcessing ? <div className="spinner"></div> : <><Icon p={Paths.Img} className="w-10 h-10 opacity-50"/><span className="text-sm font-bold">Tap to Upload</span></>}</div>}
+                                                <input type="file" ref={fileRef} onChange={handleFile} className="hidden" accept="image/*" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <div><label className="text-xs text-slate-400 font-bold block mb-2 tracking-wider">TITLE</label><input value={title} onChange={e=>setTitle(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-white focus:outline-none focus:border-indigo-500 transition-colors font-medium" placeholder="What is this?" /></div>
+                                            <div><label className="text-xs text-slate-400 font-bold block mb-2 tracking-wider">CATEGORY</label><div className="grid grid-cols-3 gap-3">{['want','inspo','memo'].map(c => (<button key={c} onClick={()=>setCat(c)} className={`py-3 rounded-xl text-sm font-bold border transition-all ${cat===c ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>{c.toUpperCase()}</button>))}</div></div>
+                                            <div><label className="text-xs text-slate-400 font-bold block mb-2 tracking-wider">LINK (Optional)</label><input value={url} onChange={e=>setUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-white font-mono text-sm focus:outline-none focus:border-indigo-500 transition-colors" placeholder="https://..." /></div>
+                                        </div>
+                                        <button onClick={handleSave} disabled={!title || isProcessing} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-500/25 mt-4 active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 text-lg">{editItem ? 'Update Stock' : 'Add to Collection'}</button>
+                                    </div>
+                                </motion.div>
+                            </>
+                        )}
+                    </AnimatePresence>
                 </div>
-              </motion.div>
-            </>
-          )}
-          </AnimatePresence>
-        );
-      };
+            );
+        };
 
-      const Item=({i,onDel,onEdit,drag,ctl})=>{
-        const C=(
-          <Card onClick={onEdit} className="overflow-hidden cursor-pointer active:scale-[0.99] transition-transform">
-            <div className="flex items-center p-3 gap-3">
-              <div className={`text-slate-700 pl-1 py-2 pr-2 ${drag?'cursor-grab active:cursor-grabbing':'opacity-0 w-0 pr-0'}`} onPointerDown={e=>drag&&ctl.start(e)} style={{touchAction:'none'}}><Icon d={Ps.Grip} className="w-5 h-5"/></div>
-              <div className="w-20 h-20 shrink-0 rounded-xl overflow-hidden bg-slate-800 relative shadow-inner border border-white/5"><img src={i.imageUrl} className="w-full h-full object-cover" style={{objectPosition:`${i.imagePosition?.x||50}% ${i.imagePosition?.y||50}%`}} onError={e=>e.target.src=`https://source.unsplash.com/400x400/?${i.category},minimal`}/></div>
-              <div className="flex-1 min-w-0 flex flex-col justify-center"><h3 className="text-slate-100 font-semibold truncate pr-2">{i.title}</h3><div className="flex items-center gap-2 mt-2"><Badge cat={i.category}/><span className="text-[10px] text-slate-500 font-medium">{fmtDt(i.createdAt)}</span></div></div>
-              <div className="flex items-center gap-2 pr-1">{i.url&&<a href={i.url} target="_blank" onClick={e=>e.stopPropagation()} className="p-2 text-indigo-400 bg-indigo-500/10 rounded-xl"><Icon d={Ps.Link} className="w-4 h-4"/></a>}<button onClick={e=>{e.stopPropagation();onDel(i.id)}} className="p-2 text-slate-600 hover:text-red-400 bg-slate-700/0 hover:bg-red-500/10 rounded-xl"><Icon d={Ps.Trash} className="w-4 h-4"/></button></div>
-            </div>
-          </Card>
-        );
-        if(drag) return <Reorder.Item value={i} id={i.id} dragListener={false} dragControls={ctl} className="relative mb-3 list-none">{C}</Reorder.Item>;
-        return <motion.div layout className="relative mb-3">{C}</motion.div>;
-      };
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    };
 
-      const App=()=>{
-        const [u,setU]=useState(null);const [lst,setLst]=useState([]);const [load,setLoad]=useState(true);const [tab,setTab]=useState('all');const [modal,setModal]=useState(false);const [edit,setEdit]=useState(null);const [st,setSt]=useState('synced');
-        useEffect(()=>{
-          const i=`data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="background-color:#0f111a"><rect width="512" height="512" fill="#0f111a"/><text x="50%" y="50%" dy=".35em" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="280" fill="#6366f1">M</text></svg>')}`;
-          let l=document.createElement('link');l.rel='apple-touch-icon';l.href=i;document.head.appendChild(l);
-          let m=document.createElement('link');m.rel='manifest';m.href=`data:application/manifest+json;base64,${btoa(JSON.stringify({name:"MoodStock",display:"standalone",start_url:".",background_color:"#0f111a",theme_color:"#0f111a",icons:[{src:i,sizes:"512x512",type:"image/svg+xml"}]}))}`;document.head.appendChild(m);
-          auth.onAuthStateChanged(usr=>{if(usr)setU(usr);else auth.signInAnonymously()});
-        },[]);
-        useEffect(()=>{if(!u)return;return db.collection('users').doc(u.uid).collection('items').onSnapshot(s=>{setLst(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order??0)-(b.order??0)));setLoad(false)})},[u]);
-        const hSave=async(d,id)=>{if(!u)return;setSt('saving');const r=db.collection('users').doc(u.uid).collection('items');if(id)await r.doc(id).update(d);else await r.add({...d,createdAt:Date.now(),order:lst.length});setSt('synced')};
-        const hDel=async(id)=>{await db.collection('users').doc(u.uid).collection('items').doc(id).delete()};
-        const hOrd=(n)=>{setLst(n);setSt('saving');if(window.t)clearTimeout(window.t);window.t=setTimeout(()=>{const b=db.batch();n.forEach((i,x)=>{b.update(db.collection('users').doc(u.uid).collection('items').doc(i.id),{order:x})});b.commit().then(()=>setSt('synced'))},1000)};
-        const flt=useMemo(()=>tab==='all'?lst:lst.filter(i=>i.category===tab),[lst,tab]);
-
-        return (
-          <div className="min-h-screen bg-[#0f111a] text-slate-200 pb-36 px-4 py-6 max-w-2xl mx-auto">
-            <header className="mb-6 sticky top-0 z-30 bg-[#0f111a]/80 backdrop-blur-md py-4 -mx-4 px-4 border-b border-white/5">
-              <div className="flex justify-between items-center mb-4">
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">MoodStock.</h1>
-                <div className="flex items-center gap-2"><span className="text-xs text-slate-500 border border-white/10 px-2 py-1 rounded-full flex items-center gap-1">{st==='saving'?<Icon d={Ps.Ref} className="w-3 h-3 animate-spin text-indigo-400"/>:<Icon d={Ps.Cloud} className="w-3 h-3 text-emerald-400"/>}{st==='saving'?'Saving...':'Saved'}</span></div>
-              </div>
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">{['all','want','inspo','memo'].map(t=>(<button key={t} onClick={()=>setTab(t)} className={`px-4 py-1.5 rounded-full text-sm font-medium border ${tab===t?'bg-indigo-500/10 text-indigo-300 border-indigo-500/30':'bg-slate-800/30 text-slate-500 border-transparent'}`}>{t}</button>))}</div>
-            </header>
-            {load?<div className="flex justify-center py-20"><div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full"/></div>:
-            <div className="space-y-3 min-h-[50vh] pb-20">
-              {tab==='all'?<Reorder.Group axis="y" values={lst} onReorder={hOrd} className="space-y-3">{lst.map(i=><Item key={i.id} i={i} onDel={hDel} onEdit={()=>{setEdit(i);setModal(true)}} drag={true} ctl={useDragControls()}/>)}</Reorder.Group>:flt.map(i=><Item key={i.id} i={i} onDel={hDel} onEdit={()=>{setEdit(i);setModal(true)}} drag={false}/>)}
-              {flt.length===0&&!load&&<div className="text-center py-20 text-slate-600 border-2 border-dashed border-slate-800/50 rounded-2xl">No items</div>}
-            </div>}
-            <button onClick={()=>{setEdit(null);setModal(true)}} className="fixed bottom-8 right-6 z-30 w-14 h-14 rounded-full bg-indigo-600 text-white shadow-lg flex items-center justify-center border border-white/20 hover:scale-105 transition-transform"><Icon d={Ps.Plus} className="w-8 h-8"/></button>
-            <Modal isOpen={modal} onClose={()=>setModal(false)} onSave={hSave} edit={edit}/>
-          </div>
-        );
-      };
-      
-      const root=ReactDOM.createRoot(document.getElementById('root'));
-      root.render(<App/>);
-    } catch(e) { log("Init Error: " + e.message); }
-  });
+    const checkLibs = (count = 0) => {
+        if(window.React && window.ReactDOM && window.firebase && window.Motion) startApp();
+        else if (count < 50) setTimeout(() => checkLibs(count + 1), 100);
+        else alert("通信エラー: アプリの起動に失敗しました。再読み込みしてください。");
+    };
+    checkLibs();
 </script>
 </body>
 </html>
